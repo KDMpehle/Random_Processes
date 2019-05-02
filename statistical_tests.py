@@ -71,6 +71,5 @@ def PCA(x):
     L = np.diag(W[::-1].sort()) # diag(L1,L2,..,Ld), L1> L2>..>Ld
     Y = np.dot(Gamma.T,x- mu) # rotate the centered data
     return Y
-    pass
 if __name__ == "__name__":
     pass # here I will put a test case.
