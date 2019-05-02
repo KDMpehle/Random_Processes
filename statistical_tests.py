@@ -68,7 +68,7 @@ def PCA(x):
     Sigma = np.cov(x) # get sample covariance of the data.
     mu = np.mean(x) # get the sample mean.
     W, Gamma= np.linalg.eig(Sigma) # spectral decomp of covariance
-    L = np.diag(W[::-1].sort()) # diag(L1,L2,..,Ld), L1> L2>..>Ld
+    L = np.diag(np.sort(W)[::-1]) # diag(L1,L2,..,Ld), L1> L2>..>Ld
     Y = np.dot(Gamma.T,x- mu) # rotate the centered data
     return Y
 if __name__ == "__name__":
