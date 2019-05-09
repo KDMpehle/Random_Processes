@@ -60,16 +60,16 @@ def PCA(x):
     A script to perform the principal component analysis as explained in
     Quantitative risk management by Embrechts et al.
     ----input----
-    - x: an N-dimensional vector of data points
+    - x: an nxN-dimensional array of data points: n spatial dimensions, N sample size
 
     ----output-----
-    - Y: a N-dimensional vector of the principle components.
+    - Y: a nxN-dimensional vector of the principle components.
     '''
-    Sigma = np.cov(x) # get sample covariance of the data.
-    mu = np.mean(x) # get the sample mean.
-    W, Gamma= np.linalg.eig(Sigma) # spectral decomp of covariance
-    L = np.diag(np.sort(W)[::-1]) # diag(L1,L2,..,Ld), L1> L2>..>Ld
-    Y = np.dot(Gamma.T,x- mu) # rotate the centered data
-    return Y
+    mu = np.mean(x.T, axis = 1) # obtain the mean vector.
+    Sigma = np.cov(x.T) # get the covariance matrix of the sample.
+    W, Gamma = np.linalg.eig(Sigma) # Perform a spectral decomposition.
+    L = np.diag(np.sort(W)[::-1]) # diag(L1,L2,..,Ld) L1 > L2 >...> Ld
+    Y = Gamma.T.dot((x-mu).T) #rotate the data, Y = Gamma'(X-mu)
+    return Y.T,L # return the PC array; columns are each PC vector.
 if __name__ == "__name__":
     pass # here I will put a test case.
