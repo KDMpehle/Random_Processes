@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import scipy as scipy
 from scipy.special import gamma 
 import warnings
+import time
 
 def fBm(g,H=0.8,choice = 'fBm',T=1.):
     '''fGn is simulated using the Davies-Hearte method
@@ -17,32 +18,53 @@ def fBm(g,H=0.8,choice = 'fBm',T=1.):
         return (np.abs(k-1)**(2*H) -2*np.abs(k)**(2*H) + np.abs(k+1)**(2*H))/2
     N =2**g # number of simulation points
     mesh = T/N # the number of points in the mesh
-    C = np.zeros((2*N,2*N)) # the Circulant matrix, preallocated.
-    C[0,0:N] = auto_cov(np.arange(0,N),H)
-    C[0,N+1]= 0
-    C[0,N+1:2*N] =auto_cov( np.arange(N-1,0,-1),H) # First row
-    # note in last step: is there an error in Diekker?
-    for i in range(1,2*N):
-        C[i,:] = np.roll(C[0,:],i)# not i-1 due to numpy indexing.
+    x = np.arange(0,N)
+    r = np.zeros(2*N)
+    r[0:N] = auto_cov(x[0:N],H)
+    r[N+1] = 0
+    r[N+1:2*N] = auto_cov(x[N-1:0:-1],H)
+    #r  = C[0,:]
     # Spectrally decompose C.
-    r  = C[0,:]
-    L = (2*N)*np.fft.ifft(r) # Numpy DFT is inverse of Diekker's.
-    V1,V2 = np.random.normal(0,1.,2*N),np.random.normal(0,1.,2*N)
+    L = np.fft.fft(r).real # Numpy DFT is inverse of Diekker's.
+    neg_Evals = L[L <0] # produce a 'list' of negative eigenvalues
+    if len(neg_Evals) == 0:
+        pass # if there are no negative eigenvalues, continues
+    elif np.absolute(neg_Evals.min()) < 1e-16:
+        L[ L <0] = 0 # eigenvalues are zero to machine precision.
+    else:
+        raise ValueError("Could not find a positive definite circulant matrix")
+    V1,V2 = np.random.normal(0,1.,N),np.random.normal(0,1.,N)
     W=np.zeros(2*N,dtype=np.complex_)
     W[0]= np.sqrt(L[0]/(2*N))*V1[0]
     W[1:N] = np.sqrt(L[1:N]/(4*N))*(V1[1:N] +1j*V2[1:N])
-    W[N] = np.sqrt(L[N]/(2*N))*V1[N]
+    W[N] = np.sqrt(L[N]/(2*N))*V1[0]
     W[N+1:2*N] = np.sqrt(L[N+1:2*N]/(4*N))*(V1[N-1:0:-1]-1j*V2[N-1:0:-1])
     # We take the fast Fourier transform of the special vector W
-    w = np.fft.fft(W, norm ="ortho") # Redo the algorithm remove "ortho".
+    w = np.fft.fft(W) # Redo the algorithm remove "ortho".
     #We return the first N elements for a sample of fGn.
     if choice == 'fBm':
-        sample = np.insert((mesh)**H*np.cumsum(np.real(w[0:N])),0,0) #insert 0 at t=0
+        sample = np.insert((mesh)**H*np.cumsum(w[0:N].real),0,0) #insert 0 at t=0
     elif choice == 'fGn':
-        sample = (mesh)**H*np.real(w[0:N]) # fGn: note self-similar scaling. 
+        sample = (mesh)**H*w[0:N].real # fGn: note self-similar scaling. 
     else:
         print("Error: choice must be either 'fGn' or 'fBm'")
     return sample # return the sample with no adjustment
+
+def fBm_chol(N,auto_cov,H=0.8,T=0.1,choice = "fGn"):
+    mesh = T/N
+    x1,x2 = np.array(range(N)),np.array(range(N))
+    t0 = time.time()
+    G1 = auto_cov(x1[None,:] - x2[:,None],H) # generate the auto-covariance matrix.
+    L = np.linalg.cholesky(G1)
+    Z = np.random.randn(N)
+    fgn = np.dot(L, Z.transpose())
+    if choice == "fGn":
+        return mesh**H*fgn
+    elif choice == "fBm":
+        return mesh**H*np.insert(np.cumsum(fgn),0,0)
+    else:
+        raise ValueError(" either 'fBm' or 'fGn' must be selected to be returned")
+##get on to writing a hosking-simulation for fBm.
 def mBm(H,T =1., N = 100):
     '''
     A function to produce multifractional Brownian motion.
@@ -115,6 +137,26 @@ def Gauss_field(R,n,m):
     F = F[:m,:n]
     field1, field2 = np.real(F), np.imag(F)
     return field1,field2
+def Chole_Gauss_field(R,xgird,ygrid):
+    """
+    To simulate a 2-D stationary Gaussian field with the Cholesky.
+    
+    """
+    n,m = len(xgrid),len(ygrid)
+    coords = [] # list to hold coordinates
+    for i in range(n):
+        for j in range(m):
+            coords.append([xgrid[i],ygrid[j]])
+    coords = np.array(coords) # turn coordinates list into array
+    diff = np.repeat(coords,n*m,axis=0) - np.tile(coords,[n*m,1])
+    #print(diff)
+    Sigma = np.array(list(map(R,diff)))
+    #print(Sigma)
+    Sigma = Sigma.reshape(n*m,n*m)
+    Gamma = np.linalg.cholesky(Sigma)
+    Z  = np.random.randn(n*m) # random vector of size n*m
+    X  = np.dot(Gamma,Z) # Gaussian vector with covariance structure.
+    return X.reshape((n,m))
 #To interpolate a time series with a series of Brownian motions
 def BM_stochastic_interpolate(x,ts,k):
     """
@@ -223,20 +265,20 @@ def max_value(X,t):
     max_index = np.argmax(X) # Get the index of the maximum of the process
     return X[max_index],t[max_index] # return the time of attainment of maximum
 
-test = "mBm"
+test = "fBm"
 if __name__== "__main__" and test =="fBm":
     #Test out the periodogram method. 
     #Produce a fractional Gaussian noise H=1/2 for moment
     from scipy.stats import norm,linregress
-    g=8
+    g=10
     N=2**g
-    #sample= fBm(g,H=0.8,choice= 'fBm')
-    sample = f_bridge(0.,0.1,3.,8)
+    sample= fBm(g,H=0.9,choice= 'fBm')
+    #sample = f_bridge(0.,0.1,3.,8)
     t= np.linspace(0,1.,N+1)
     plt.plot(t,sample)
     plt.show()
     
-if __name__ == "__main__" and test == "Gauss field":
+if __name__ == "__main__" and test == "Gauss field 1":
     def R1(x,y,l=1./np.sqrt(10)):
         A = np.array([[2,1],[1,2]])
         s =( (x/15)**2*A[1,1] + (A[0,1] +A[1,0])*(x/15)*(y/50)
@@ -250,9 +292,29 @@ if __name__ == "__main__" and test == "Gauss field":
         Rho = np.ones(s.shape)
         Rho[s>0] =  2**(1-v)*(np.sqrt(2*v)*s[s>0])**v*kv(v,np.sqrt(2*v)*s[s>0])/gamma(v)
         return Rho
-    field1,field2 = Gauss_field(R2,512,512)
+    field1,field2 = Gauss_field(R1,32,32)
     plt.imshow(field1)
     plt.show()
+if __name__ == "__main__" and test == "Gauss field 2":
+    def R1(t,l=1./np.sqrt(10)):
+        x,y = t[0],t[1]
+        A = np.array([[2,1],[1,2]])
+        s =( (x/15)**2*A[1,1] + (A[0,1] +A[1,0])*(x/15)*(y/50)
+             + (y/50)**2*A[0,0])
+        Rho = np.exp(-np.sqrt(s))
+        return Rho
+    from scipy.special import kv
+    def R2(t, v = 0.25):
+        x,y = t[0],t[1]
+        A = np.array([[3,1],[1,2]])
+        s =np.sqrt(A[1,1]*(x/15)**2 + 2*A[0,1]*(x/15)*(y/50)+ A[0,0]*(y/50)**2)
+        Rho = np.ones(s.shape)
+        Rho[s>0] =  2**(1-v)*(np.sqrt(2*v)*s[s>0])**v*kv(v,np.sqrt(2*v)*s[s>0])/gamma(v)
+        return Rho
+    xgrid, ygrid = np.linspace(0,512,32),np.linspace(0,512,32)
+    field = Chole_Gauss_field(R1,xgrid,ygrid)
+    plt.imshow(field,interpolation = 'nearest')
+    plt.show()  
 if __name__ == "__main__" and test == "mBm":
     def H(t):
         return 0.5 + 0.45*np.sin(8*np.pi*t)
@@ -263,4 +325,10 @@ if __name__ == "__main__" and test == "mBm":
     sample = mBm(H,T,N)
     plt.plot(t_vals, sample)
     plt.title(s)
+    plt.show()
+if __name__ == "__main__" and test == "chol":
+    def auto_cov(k, H): # the auto-covariance of fGn
+        return (np.abs(k-1)**(2*H) -2*np.abs(k)**(2*H) + np.abs(k+1)**(2*H))/2
+    fgn = fBm_chol(600,auto_cov,0.99,1.,"fBm")
+    plt.plot(fgn)
     plt.show()
