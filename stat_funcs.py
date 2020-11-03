@@ -1,7 +1,8 @@
 # Script to hold various statistical functions
 # Sections corresponding to different domains of stats will be clearly marked
 import numpy as np
-import matplotlib.pyplot as plt 
+import matplotlib.pyplot as plt
+
 #### Spectral functions (for frequency analysis) ####
 
 
@@ -135,7 +136,62 @@ def p_quant(X, p,k):
     alpha = Hill_est(X,k) # get the alpha estimate
     return Xord[k-1] * ((1. - p) * N / k)**(-1 / alpha) #estimate of p-quantile
 
+#Pareto tail estimator
+def Pareto_tail_est(X,k):
+    N = len(X)
+    Xord = np.flip(np.sort(X),0)
+    alpha = Hill_est(X,k) #Shape parameter of Pareto
+    def _F(x):
+        return (float(k) / N) * (x / Xord[k-1])**(-alpha)
+    return _F
+#Empirical tail distribution function. F_bar = 1- F, so bar_ecdf = 1- ecdf
+def bar_ecdf(X):
+    Xord = np.sort(X) # sort the data
+    N = len(X) # length of the sample
+    def _bar_ecdf(v): # return the empirical survival function
+        return 1 - (np.searchsorted(Xord, V, side = 'right')) / N
+    return _bar_ecdf
+
 ####Quantile plots####
+# The generalised inverses of the extreme value distributions( no translation)
+
+#A standard Gumbel distribution
+def Gumbel_inv(x):
+    return -np.log(-np.log(x))
+
+#A standard Frechet distribution
+def Frechet_inv(x, alpha= alpha):
+    return (-np.log(x))**(-1./alpha)
+
+#A standard Weibull distribution
+def Weibull_inv(x,alpha = alpha):
+    return -(-np.log(x))**(1./alpha)
+
+# Generalised inverse distribution
+def GEV_inv(x, xi):# note this defn doesn't account xi=0 Gumbel case.
+    if abs(xi) > 1e-10:
+        return ((-np.log(x))**(-xi) - 1) / xi
+    else:
+        return -np.log(-np.log(x))
+
+#QQplot for an arbitrarily supplied inverse distribution
+def QQ_plot(X, F):
+    '''
+    input
+    ----
+    X the data set
+    F the inverse of the 
+    output
+    ----
+    QQplot
+    '''
+    N = len(X)
+    Xord = np.sort(X)[::-1] # order stats X[0] > ... > X[n]
+    pk = np.array([float((n-k + 0.5))/n for k in range(1, n+1)]) #points on which to evaluate inverse function
+    Y = F(pk)
+    plt.plot(Y, Xord, 'o')
+    plt.show()
+    return
 
     
     
